@@ -18,6 +18,9 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD)
 IMAGE_NAME=secrets-store-csi
 IMAGE_VERSION?=v0.0.9
 E2E_IMAGE_VERSION = v0.1.0-e2e-$(GIT_COMMIT)
+
+# if Reconciler is defined.
+IS_R := true
 # Use a custom version for E2E tests if we are testing in CI
 ifdef CI
 override IMAGE_VERSION := $(E2E_IMAGE_VERSION)
@@ -27,6 +30,13 @@ IMAGE_TAG_LATEST=$(REGISTRY)/$(IMAGE_NAME):latest
 LDFLAGS?='-X sigs.k8s.io/secrets-store-csi-driver/pkg/secrets-store.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"'
 GO_FILES=$(shell go list ./... | grep -v /test/sanity)
 
+ifdef IS_R
+override REGISTRY := docker.io/bdlb77
+endif
+RECONCILER_IMAGE_NAME=secrets-store-reconciler
+RECONCILER_IMAGE_VERSION?=v0.0.1
+RECONCILER_TAG=$(REGISTRY)/$(RECONCILER_IMAGE_NAME):$(RECONCILER_IMAGE_VERSION)
+LDFLAGS_R ?= '-X sigs.k8s.io/secrests-store-sci-driver/pkg/reconciler.vendorVersion=$(RECONCILER_IMAGE_VERSION) -extldflags "-static"'
 .PHONY: all build image clean test-style
 
 GO111MODULE ?= on
@@ -50,10 +60,14 @@ build: setup
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS} -o _output/secrets-store-csi ./cmd/secrets-store-csi-driver
 build-windows: setup
 	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${LDFLAGS} -o _output/secrets-store-csi.exe ./cmd/secrets-store-csi-driver
+build-reconciler: setup
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS_R} -o _output/secrets-store-reconciler ./cmd/secrets-store-reconciler
 image: build
 	docker build --no-cache -t $(IMAGE_TAG) -f Dockerfile .
 image-windows: build-windows
 	docker build --no-cache -t $(IMAGE_TAG) -f windows.Dockerfile .
+image-reconciler: build-reconciler
+	docker build --no-cache -t $(RECONCILER_TAG) -f Dockerfile_Reconciler .
 clean:
 	-rm -rf _output
 setup: clean
@@ -76,7 +90,7 @@ VAULT_VERSION ?= 1.2.2
 .PHONY: e2e-test
 e2e-test: e2e-bootstrap
 	make e2e-azure
-	
+
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
 	apt-get update && apt-get install bats && apt-get install gettext-base -y
