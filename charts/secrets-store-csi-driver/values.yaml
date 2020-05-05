@@ -4,6 +4,11 @@ linux:
     repository: docker.io/deislabs/secrets-store-csi
     tag: v0.0.9
     pullPolicy: Always
+  reconciler:
+    image:
+      repository: docker.io/bdlb77/secrets-store-reconciler
+      tag: v0.0.1
+      pullPolicy: Always
 
 windows:
   enabled: false
