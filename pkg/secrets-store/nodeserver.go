@@ -104,7 +104,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if providerName != "" {
 		parameters = attrib
 	} else {
-		item, err := getSecretProviderItemByName(ctx, secretProviderClass)
+		item, err := GetSecretProviderItemByName(ctx, secretProviderClass)
 		if err != nil {
 			return nil, err
 		}

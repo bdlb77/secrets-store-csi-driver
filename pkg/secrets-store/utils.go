@@ -260,7 +260,7 @@ func syncK8sObjects(ctx context.Context, targetPath string, podUID string, names
 		/// TODO(ritazh): right now assume all files come from one secretproviderclass
 		// update instance status field with podUID and namespace
 		setStatusFn := func() (bool, error) {
-			item, err := getSecretProviderItemByName(ctx, secretProviderClass)
+			item, err := GetSecretProviderItemByName(ctx, secretProviderClass)
 			if err != nil {
 				log.Errorf("failed to get secret provider item, err: %v for pod: %s, ns: %s", err, podUID, namespace)
 				return false, nil
@@ -314,7 +314,7 @@ func removeK8sObjects(ctx context.Context, targetPath string, podUID string, fil
 
 	if len(namespace) > 0 && len(secretProviderClass) > 0 {
 		deleteSecretFn := func() (bool, error) {
-			item, err := getSecretProviderItemByName(ctx, secretProviderClass)
+			item, err := GetSecretProviderItemByName(ctx, secretProviderClass)
 			if err != nil {
 				log.Errorf("failed to get secret provider item, err: %v for pod: %s, ns: %s", err, podUID, namespace)
 				return false, nil
@@ -597,8 +597,8 @@ func getStatusCount(obj *unstructured.Unstructured) (int, error) {
 	return 0, nil
 }
 
-// getSecretProviderItemByName returns the secretproviderclass object by name
-func getSecretProviderItemByName(ctx context.Context, name string) (*unstructured.Unstructured, error) {
+// GetSecretProviderItemByName returns the secretproviderclass object by name
+func GetSecretProviderItemByName(ctx context.Context, name string) (*unstructured.Unstructured, error) {
 	instanceList := &unstructured.UnstructuredList{}
 	instanceList.SetGroupVersionKind(secretProviderClassGvk)
 	// recreating client here to prevent reading from cache
