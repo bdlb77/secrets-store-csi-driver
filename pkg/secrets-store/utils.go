@@ -166,7 +166,7 @@ func (ns *nodeServer) ensureMountPoint(target string) (bool, error) {
 
 // syncK8sObjects creates or updates K8s secrets based on secretProviderClass spec and data from mounted files in targetPath
 // it should also add pod info to the secretProviderClass object's byPod status field
-func syncK8sObjects(ctx context.Context, targetPath string, podUID string, namespace string, secretProviderClass string, secretObjects []interface{}) error {
+func syncK8sObjects(ctx context.Context, targetPath string, podUID string, podName string, namespace string, secretProviderClass string, secretObjects []interface{}) error {
 	successfulUpdates := 0
 	files, err := getMountedFiles(targetPath)
 	if err != nil {
@@ -265,7 +265,7 @@ func syncK8sObjects(ctx context.Context, targetPath string, podUID string, names
 				log.Errorf("failed to get secret provider item, err: %v for pod: %s, ns: %s", err, podUID, namespace)
 				return false, nil
 			}
-			if err := setStatus(ctx, item, podUID, namespace); err != nil {
+			if err := setStatus(ctx, item, podUID, namespace, podName); err != nil {
 				log.Errorf("failed to set status, err: %v for pod: %s, ns: %s", err, podUID, namespace)
 				return false, nil
 			}
@@ -434,7 +434,7 @@ func deleteK8sSecret(ctx context.Context, name string, namespace string) error {
 }
 
 // setStatus adds pod-specific info to byPod status of the secretproviderclass object
-func setStatus(ctx context.Context, obj *unstructured.Unstructured, id string, namespace string) error {
+func setStatus(ctx context.Context, obj *unstructured.Unstructured, id string, namespace string, podName string) error {
 	log.Infof("setStatus for pod: %s, ns: %s", id, namespace)
 	// recreating client here to prevent reading from cache
 	c, err := getClient()
@@ -443,6 +443,7 @@ func setStatus(ctx context.Context, obj *unstructured.Unstructured, id string, n
 	}
 	status := map[string]interface{}{
 		"id":        id,
+		"name":      podName,
 		"namespace": namespace,
 	}
 	statuses, _, err := unstructured.NestedSlice(obj.Object, "status", "byPod")
@@ -704,7 +705,7 @@ func getStringFromObject(object map[string]interface{}, key string) (string, err
 	return value, nil
 }
 
-func getMapFromObjectSpec(object map[string]interface{}, key string) (map[string]string, error) {
+func GetMapFromObjectSpec(object map[string]interface{}, key string) (map[string]string, error) {
 	value, exists, err := unstructured.NestedStringMap(object, "spec", key)
 	if err != nil {
 		return nil, err

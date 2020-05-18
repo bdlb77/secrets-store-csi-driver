@@ -88,13 +88,45 @@ func main() {
 	if err != nil {
 		log.Errorf("issue with getting provider classes, %v", err)
 	}
-	items := []*unstructured.Unstructured{}
+	// items := []*unstructured.Unstructured{}
+	// params := []map[string]string{}
+	// var statuses []interface{}
+	// secrets := []map[string]string{}
+	// var mountPath string
 	for _, name := range providerNames {
 		item, _ := secretsstore.GetSecretProviderItemByName(ctx, name)
-		items = append(items, item)
+		// paramStr, err := secretsstore.GetMapFromObjectSpec(item.Object, "parameters")
+		if err != nil {
+			log.Errorf("Issue Marshaling Provider from Secret Provider Class: %v", name)
+		}
+
+		podInfo, exists, err := unstructured.NestedSlice(item.Object, "status", "byPod")
+		if err != nil {
+			log.Errorf("Issue parsing byPod information in the Status Field for Secret Provider Class: %v", name)
+		}
+		if !exists {
+			log.Errorf("No pods tracked in Status Field for Secret Provider Class: %v", name)
+		}
+
+		for _, p := range podInfo {
+			pod, _ := p.(map[string]interface{})
+
+			spew.Dump(pod["name"])
+			// podData = append(podData, podStatus)
+		}
+		// Find podNames
+		//  For each name (--> run concurrently)
+
+		// fetch Pod w/ pod name
+		// if usePodIdentity false
+		// take secretRef create secrets..
+		// find mounth path
+
+		// params = append(params, paramStr)
+		// items = append(items, item)
+		// statuses = append(statuses, podInfo)
+
 	}
-	spew.Dump(items)
-	// spew.Dump(item.Object)
 }
 
 func handle() {

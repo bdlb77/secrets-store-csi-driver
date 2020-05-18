@@ -58,7 +58,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	var parameters map[string]string
 	var providerName string
 	var secretObjects []interface{}
-	var podNamespace, podUID string
+	var podNamespace, podUID, podName string
 	syncK8sSecret := false
 
 	// Check arguments
@@ -113,7 +113,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 			return nil, err
 		}
 		providerName = provider
-		parameters, err = getMapFromObjectSpec(item.Object, parametersField)
+		parameters, err = GetMapFromObjectSpec(item.Object, parametersField)
 		if err != nil {
 			return nil, err
 		}
@@ -127,6 +127,7 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		parameters[csipoduid] = attrib[csipoduid]
 		podNamespace = parameters[csipodnamespace]
 		podUID = parameters[csipoduid]
+		podName = parameters[csipodname]
 	}
 
 	if isMockProvider(providerName) {
@@ -221,13 +222,20 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 			log.Errorf("error invoking provider, err: %v, output: %v for pod: %s, ns: %s", err, stderr.String(), podUID, podNamespace)
 			return nil, fmt.Errorf("error mounting secret %v for pod: %s, ns: %s", stderr.String(), podUID, podNamespace)
 		}
+
+		// add PodUID's to status.
+
 		// create/update secrets with mounted file content
 		// add pod info to the secretProviderClass obj's byPod status field
 		if syncK8sSecret {
 			log.Debugf("[NodePublishVolume] syncK8sSecret is enabled for pod: %s, ns: %s", podUID, podNamespace)
-			err := syncK8sObjects(ctx, targetPath, podUID, podNamespace, secretProviderClass, secretObjects)
+			err := syncK8sObjects(ctx, targetPath, podUID, podName, podNamespace, secretProviderClass, secretObjects)
 			if err != nil {
 				log.Errorf("syncK8sObjects err: %v for pod: %s, ns: %s", err, podUID, podNamespace)
+				return nil, err
+			}
+		} else {
+			if err := setPodsInStatus(ctx, secretProviderClass, podUID, podNamespace, podName); err != nil {
 				return nil, err
 			}
 		}
