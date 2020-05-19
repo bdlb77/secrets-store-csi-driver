@@ -590,18 +590,11 @@ func getStatusCount(obj *unstructured.Unstructured) (int, error) {
 
 // GetSecretProviderItemByName returns the secretproviderclass object by name
 func GetSecretProviderItemByName(ctx context.Context, name string) (*unstructured.Unstructured, error) {
-	instanceList := &unstructured.UnstructuredList{}
-	instanceList.SetGroupVersionKind(secretProviderClassGvk)
-	// recreating client here to prevent reading from cache
-	c, err := GetClient()
-	if err != nil {
-		return nil, err
-	}
-	err = c.List(ctx, instanceList)
-	if err != nil {
-		return nil, err
-	}
 
+	instanceList, err := ListSecretProviderClasses(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for _, item := range instanceList.Items {
 		if item.GetName() == name {
 			return &item, nil
@@ -613,13 +606,7 @@ func GetSecretProviderItemByName(ctx context.Context, name string) (*unstructure
 // getItemWithPodID returns the secretproviderclass object with podUID
 func getItemWithPodID(ctx context.Context, podUID string) (*unstructured.Unstructured, string, error) {
 	// recreating client here to prevent reading from cache
-	c, err := GetClient()
-	if err != nil {
-		return nil, "", err
-	}
-	instanceList := &unstructured.UnstructuredList{}
-	instanceList.SetGroupVersionKind(secretProviderClassGvk)
-	err = c.List(ctx, instanceList)
+	instanceList, err := ListSecretProviderClasses(ctx)
 	if err != nil {
 		return nil, "", err
 	}
@@ -834,4 +821,21 @@ func GetK8sSecret(ctx context.Context, name string, namespace string) (*corev1.S
 	err = client.Get(ctx, secretKey, secret)
 
 	return secret, nil
+}
+
+// ListSecretProviderClasses used in Reconciler
+func ListSecretProviderClasses(ctx context.Context) (*unstructured.UnstructuredList, error) {
+	client, err := GetClient()
+	if err != nil {
+		return nil, err
+	}
+	instanceList := &unstructured.UnstructuredList{}
+	instanceList.SetGroupVersionKind(SecretProviderClassGvk)
+
+	err = client.List(ctx, instanceList)
+	if err != nil {
+		return nil, err
+	}
+
+	return instanceList, nil
 }
