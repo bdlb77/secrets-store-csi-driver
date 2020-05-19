@@ -364,24 +364,14 @@ func removeK8sObjects(ctx context.Context, targetPath string, podUID string, fil
 // If a secret with the same name already exists in the namespace of the pod, it's updated.
 func createOrUpdateK8sSecret(ctx context.Context, name string, namespace string, datamap map[string][]byte, secretType corev1.SecretType) error {
 	// recreating client here to prevent reading from cache
-	c, err := getClient()
+
+	secret, err := GetK8sSecret(ctx, name, namespace)
+
+	c, err := GetClient()
 	if err != nil {
 		return err
 	}
-	secretKey := types.NamespacedName{
-		Namespace: namespace,
-		Name:      name,
-	}
 
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
-		Type: secretType,
-	}
-
-	err = c.Get(ctx, secretKey, secret)
 	if err != nil {
 		log.Error(err, "error from c.Get for secret: %s, ns: %s", name, namespace)
 		if errors.IsNotFound(err) {
@@ -408,7 +398,7 @@ func createOrUpdateK8sSecret(ctx context.Context, name string, namespace string,
 // deleteK8sSecret deletes a secret by name
 func deleteK8sSecret(ctx context.Context, name string, namespace string) error {
 	// recreating client here to prevent reading from cache
-	c, err := getClient()
+	c, err := GetClient()
 	if err != nil {
 		return err
 	}
@@ -437,7 +427,7 @@ func deleteK8sSecret(ctx context.Context, name string, namespace string) error {
 func setStatus(ctx context.Context, obj *unstructured.Unstructured, id string, namespace string, podName string) error {
 	log.Infof("setStatus for pod: %s, ns: %s", id, namespace)
 	// recreating client here to prevent reading from cache
-	c, err := getClient()
+	c, err := GetClient()
 	if err != nil {
 		return err
 	}
@@ -488,7 +478,7 @@ func setStatus(ctx context.Context, obj *unstructured.Unstructured, id string, n
 // deleteStatus deletes pod-specific information from byPod status of the secretproviderclass object
 func deleteStatus(ctx context.Context, obj *unstructured.Unstructured, id string) error {
 	// recreating client here to prevent reading from cache
-	c, err := getClient()
+	c, err := GetClient()
 	if err != nil {
 		return err
 	}
@@ -573,8 +563,8 @@ func getNamespaceByPodID(obj *unstructured.Unstructured, id string) (string, err
 	return "", fmt.Errorf("could not find pod id %s in status", id)
 }
 
-// getClient returns client.Client
-func getClient() (client.Client, error) {
+// GetClient returns client.Client
+func GetClient() (client.Client, error) {
 	cfg, err := config.GetConfig()
 	if err != nil {
 		return nil, err
@@ -603,7 +593,7 @@ func GetSecretProviderItemByName(ctx context.Context, name string) (*unstructure
 	instanceList := &unstructured.UnstructuredList{}
 	instanceList.SetGroupVersionKind(secretProviderClassGvk)
 	// recreating client here to prevent reading from cache
-	c, err := getClient()
+	c, err := GetClient()
 	if err != nil {
 		return nil, err
 	}
@@ -623,7 +613,7 @@ func GetSecretProviderItemByName(ctx context.Context, name string) (*unstructure
 // getItemWithPodID returns the secretproviderclass object with podUID
 func getItemWithPodID(ctx context.Context, podUID string) (*unstructured.Unstructured, string, error) {
 	// recreating client here to prevent reading from cache
-	c, err := getClient()
+	c, err := GetClient()
 	if err != nil {
 		return nil, "", err
 	}
@@ -705,6 +695,7 @@ func getStringFromObject(object map[string]interface{}, key string) (string, err
 	return value, nil
 }
 
+// GetMapFromObjectSpec is used in the Reconciler.
 func GetMapFromObjectSpec(object map[string]interface{}, key string) (map[string]string, error) {
 	value, exists, err := unstructured.NestedStringMap(object, "spec", key)
 	if err != nil {
@@ -805,4 +796,42 @@ func getPrivateKey(data []byte) ([]byte, error) {
 	}
 
 	return pem.EncodeToMemory(block), nil
+}
+
+// setStatusOfPods
+func setPodsInStatus(ctx context.Context, spcName string, podUID string, podNamespace string, podName string) error {
+
+	item, err := GetSecretProviderItemByName(ctx, spcName)
+	if err != nil {
+		log.Errorf("failed to get secret provider item, err: %v for pod: %s, ns: %s", err, podUID, podNamespace)
+		return err
+	}
+	if err := setStatus(ctx, item, podUID, podNamespace, podName); err != nil {
+		log.Errorf("failed to set status, err: %v for pod: %s, ns: %s", err, podUID, podNamespace)
+		return err
+	}
+	return nil
+}
+
+// GetK8sSecret is used in the Reconciler.
+func GetK8sSecret(ctx context.Context, name string, namespace string) (*corev1.Secret, error) {
+	client, err := GetClient()
+
+	if err != nil {
+		return nil, err
+	}
+	secretKey := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+		},
+	}
+
+	err = client.Get(ctx, secretKey, secret)
+
+	return secret, nil
 }

@@ -11,50 +11,15 @@ import (
 	"net/url"
 	"os"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"k8s.io/apimachinery/pkg/types"
 	secretsstore "sigs.k8s.io/secrets-store-csi-driver/pkg/secrets-store"
 
 	"github.com/davecgh/go-spew/spew"
 	log "github.com/sirupsen/logrus"
 )
-
-// ProviderParams to be used in Provider to call Vault.
-
-type Data struct {
-	Items []Item `json:"items" yaml:"items"`
-}
-
-// Item related to an item inside SPC
-type Item struct {
-	APIVersion string   `json:"apiVersion" yaml:"apiVersion"`
-	Kind       string   `json:"kind" yaml:"kind"`
-	MetaData   MetaData `json:"metadata" yaml:"metadata"`
-}
-type MetaData struct {
-	Name string `json:"name" yaml:"name"`
-}
-type Spec struct {
-	Parameters Parameter `json:"parameters" yaml:"parameters"`
-}
-
-type Status struct {
-	Pods []Pod `json:"byPod" yaml:"byPod`
-}
-
-type Pod struct {
-	ID        string `json:"id" yaml:"id"`
-	Namespace string `json:"namespace" yaml: "namespace"`
-	Name      string `json:"name" yaml:"name"`
-}
-
-type Parameter struct {
-	KeyVaultName           string `json:"keyvaultName" yaml:"keyvaultName"`
-	TenantID               string `json:"tenantId" yaml:"tenantId"`
-	Objects                string `json:"objects" yaml:"objects"`
-	UsePodIdentity         string `json:"usePodIdentity" yaml:"usePodIdentity"`
-	UseVMManagedIdentity   string `json:"useVMManagedIdentity" yaml:"useVMManagedIdentity"`
-	UserAssignedIdentityID string `json:"userAssignedIdentityId" yaml:"userAssignedIdentityId"`
-}
 
 // KeyVaultObject representing each secret inside a Vault.
 type KeyVaultObject struct {
@@ -62,16 +27,6 @@ type KeyVaultObject struct {
 	ObjectAlias   string `json:"objectAlias" yaml:"objectAlias"`
 	ObjectType    string `json:"objectType" yaml:"objectType"`
 	ObjectVersion string `json:"objectVersion" yaml:"objectVersion"`
-}
-
-// StringArray ...
-type StringArray struct {
-	Array []string `json:"array" yaml:"array"`
-}
-
-type Secrets struct {
-	ClientID     string
-	ClientSecret string
 }
 
 const (
@@ -84,15 +39,12 @@ const (
 func main() {
 	// handle()
 	var ctx context.Context
+	// TODO: Refactor this out with Client Library.
 	providerNames, err := fetchSecretProviderClasses(ctx)
 	if err != nil {
 		log.Errorf("issue with getting provider classes, %v", err)
 	}
-	// items := []*unstructured.Unstructured{}
-	// params := []map[string]string{}
-	// var statuses []interface{}
-	// secrets := []map[string]string{}
-	// var mountPath string
+
 	for _, name := range providerNames {
 		item, _ := secretsstore.GetSecretProviderItemByName(ctx, name)
 		// paramStr, err := secretsstore.GetMapFromObjectSpec(item.Object, "parameters")
@@ -109,17 +61,61 @@ func main() {
 		}
 
 		for _, p := range podInfo {
-			pod, _ := p.(map[string]interface{})
+			podMap, _ := p.(map[string]interface{})
 
-			spew.Dump(pod["name"])
-			// podData = append(podData, podStatus)
+			// name, namespace := podMap["name"], podMap["namespace"]
+			name, namespace := podMap["name"].(string), podMap["namespace"].(string)
+			spew.Dump(name)
+			podKey := types.NamespacedName{
+				Namespace: namespace,
+				Name:      name,
+			}
+			pod := &corev1.Pod{}
+
+			client, err := secretsstore.GetClient()
+			err = client.Get(ctx, podKey, pod)
+			if err != nil {
+				log.Errorf("Issue with creating client: %v", err)
+			}
+			var secretsName, mountName, mountPath string
+			var permissions int
+			for _, vol := range pod.Spec.Volumes {
+				if vol.CSI == nil {
+					continue
+				}
+				secretsName = vol.CSI.NodePublishSecretRef.Name
+				mountName = vol.Name
+			}
+			for _, c := range pod.Spec.Containers {
+				for _, volM := range c.VolumeMounts {
+					if mountName == volM.Name {
+						mountPath = volM.MountPath
+						if volM.ReadOnly {
+							permissions = 0644
+						}
+					}
+				}
+			}
+
+			secret, err := secretsstore.GetK8sSecret(ctx, secretsName, namespace)
+			if err != nil {
+				log.Errorf("ISsue with fetching K8s Secret: %v", err)
+			}
+			// secretsName
+			// volumes, exists, err := &corev1.Po(pod, "volumes", "csi")
+			k8sSecrets := make(map[string]string)
+			for k, v := range secret.Data {
+				k8sSecrets[k] = string(v)
+			}
+			// secret.Unmarshal(&k8sSecrets)
+			spew.Dump(k8sSecrets, permissions, mountPath)
 		}
 		// Find podNames
 		//  For each name (--> run concurrently)
-
 		// fetch Pod w/ pod name
 		// if usePodIdentity false
 		// take secretRef create secrets..
+		// getK8s secret
 		// find mounth path
 
 		// params = append(params, paramStr)
@@ -199,15 +195,6 @@ func fetchSecretProviderClasses(ctx context.Context) ([]string, error) {
 
 	return providerNames, nil
 }
-func fetchSecrets() (Secrets, error) {
-	clientID := "e966298c-00df-4a60-83f1-8600a1331334"
-	clientSecret := "28b3ea2d-dd49-4f31-9fcd-30c270ae311d"
-
-	return Secrets{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-	}, nil
-}
 
 func fetchK8sAPI(urlStr string, httpMethod string) (*http.Request, error) {
 	u, err := url.Parse(urlStr)
@@ -258,52 +245,51 @@ func fetchK8sAPI(urlStr string, httpMethod string) (*http.Request, error) {
 // 	providerName                   = "azure"
 // 	providerVolumePath             = "/etc/kubernetes/secrets-store-csi-providers"
 
-func fetchProviderBinary(parameters Parameter, secrets Secrets) error {
+// func fetchProviderBinary(parameters Parameter, secrets Secrets) error {
 
-	providerBinary := fmt.Sprintf("%s/%s/provider-%s", providerVolumePath, providerName, providerName)
+// 	providerBinary := fmt.Sprintf("%s/%s/provider-%s", providerVolumePath, providerName, providerName)
 
-	parametersStr, err := json.Marshal(parameters)
-	if err != nil {
-		log.Errorf("failed to marshal parameters")
-		return err
-	}
-	secretStr, err := json.Marshal(secrets)
-	if err != nil {
-		log.Errorf("failed to marshal secrets")
-		return err
-	}
-	permissionStr, err := json.Marshal(permission)
-	if err != nil {
-		log.Errorf("failed to marshal file permission")
-		return err
-	}
+// 	parametersStr, err := json.Marshal(parameters)
+// 	if err != nil {
+// 		log.Errorf("failed to marshal parameters")
+// 		return err
+// 	}
+// 	secretStr, err := json.Marshal(secrets)
+// 	if err != nil {
+// 		log.Errorf("failed to marshal secrets")
+// 		return err
+// 	}
+// 	permissionStr, err := json.Marshal(permission)
+// 	if err != nil {
+// 		log.Errorf("failed to marshal file permission")
+// 		return err
+// 	}
 
-	args := []string{
-		"--attributes", string(parametersStr),
-		"--secrets", string(secretStr),
-		"--targetPath", string("/secrets"),
-		"--permission", string(permissionStr),
-	}
-	spew.Dump(args)
-	spew.Dump(providerBinary)
+// 	args := []string{
+// 		"--attributes", string(parametersStr),
+// 		"--secrets", string(secretStr),
+// 		"--targetPath", string("/secrets"),
+// 		"--permission", string(permissionStr),
+// 	}
+// 	spew.Dump(args)
+// 	spew.Dump(providerBinary)
 
-	// providerBinary = "/home/bdlb77/go/src/secrets-store-csi-driver-provider-azure/_output/secrets-store-csi-driver-provider-azure"
-	// log.Infof("provider command invoked: %s %s %v", providerBinary,
-	// 	"--attributes [REDACTED] --secrets [REDACTED]", args[4:])
-	// cmd := exec.Command(
-	// 	providerBinary,
-	// 	args...,
-	// )
+// 	// log.Infof("provider command invoked: %s %s %v", providerBinary,
+// 	// 	"--attributes [REDACTED] --secrets [REDACTED]", args[4:])
+// 	// cmd := exec.Command(
+// 	// 	providerBinary,
+// 	// 	args...,
+// 	// )
 
-	// stdout := &bytes.Buffer{}
-	// stderr := &bytes.Buffer{}
-	// cmd.Stderr, cmd.Stdout = stderr, stdout
+// 	// stdout := &bytes.Buffer{}
+// 	// stderr := &bytes.Buffer{}
+// 	// cmd.Stderr, cmd.Stdout = stderr, stdout
 
-	// if err := cmd.Run(); err != nil {
-	// 	return err
-	// }
-	return nil
-}
+// 	// if err := cmd.Run(); err != nil {
+// 	// 	return err
+// 	// }
+// 	return nil
+// }
 
 func getCert() (*x509.CertPool, error) {
 	caCertPool := x509.NewCertPool()
