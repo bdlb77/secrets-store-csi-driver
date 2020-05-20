@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -30,7 +31,6 @@ type Payload struct {
 	Provider     string `json:"provider" yaml:"provider"`
 	TargetPath   string
 	Parameters   Parameters `json:"parameters" yaml:"parameters"`
-	Permissions  int        `json:"permissions" yaml:"permissions"`
 	Secrets      Secrets
 	ProviderName string `json:"name" yaml:"name"`
 }
@@ -48,30 +48,48 @@ const (
 
 func main() {
 	var ctx context.Context
+	// interval every X (time.Second)
+	pollInterval := 6000
 
-	// TODO: Refactor to use Client
+	timerCh := time.Tick(time.Duration(pollInterval) * time.Second)
+
+	for range timerCh {
+		reconciler(ctx)
+	}
+
+}
+
+func reconciler(ctx context.Context) {
 	log.Infof("Retrieving list of Secret Provider Classes in the cluster.")
-	instanceList, err := secretsstore.ListSecretProviderClasses(ctx)
+	secretProviderClassObjects, err := secretsstore.ListSecretProviderClasses(ctx)
+	if len(secretProviderClassObjects.Items) < 1 {
+		log.Infof("Did not find any Secret Provider Classes in the cluster.")
+		log.Infof("Reconciler Exiting.")
+		return
+	}
 	if err != nil {
 		log.Errorf("Issues fetching list of Secret Provider Classes: %v", err)
 	}
-	for _, item := range instanceList.Items {
+	for _, item := range secretProviderClassObjects.Items {
 		payload := &Payload{
 			Parameters: Parameters{},
 			Secrets:    Secrets{},
 		}
-		err := buildPayloadFromSPC(ctx, item, payload)
+		err := buildPayloadFromSecretProviderClass(ctx, item, payload)
 		if err != nil {
 			log.Errorf("Could not build provider payload for SPC: %v, Error: %v", item.GetName(), err)
+			return
 		}
-
+		log.Infof("Invoking Provider Binary")
 		err = fetchProviderBinary(payload)
 		if err != nil {
 			log.Errorf("Error when Calling Provider. Error: %v", err)
+			return
 		}
+		log.Infof("Finished Provider Binary")
 	}
 }
-func buildPayloadFromSPC(ctx context.Context, item unstructured.Unstructured, payload *Payload) error {
+func buildPayloadFromSecretProviderClass(ctx context.Context, item unstructured.Unstructured, payload *Payload) error {
 
 	spcName := item.GetName()
 	payload.ProviderName = spcName
@@ -79,8 +97,8 @@ func buildPayloadFromSPC(ctx context.Context, item unstructured.Unstructured, pa
 	if err != nil {
 		return fmt.Errorf("Issue receiving params from instance of SPC: %v, Error: %v ", spcName, err)
 	}
-	paramsJSON, err := json.Marshal(parameters)
 
+	paramsJSON, err := json.Marshal(parameters)
 	err = json.Unmarshal(paramsJSON, &payload.Parameters)
 	if err != nil {
 		return fmt.Errorf("Issue Unmarshaling params from instance of SPC: %v, Error: %v ", spcName, err)
@@ -93,21 +111,22 @@ func buildPayloadFromSPC(ctx context.Context, item unstructured.Unstructured, pa
 	if err != nil {
 		return fmt.Errorf("Issue slicing params from SPC: %v, Error: %v", spcName, err)
 	}
+
 	providerType, _, err := unstructured.NestedString(item.Object, "spec", "provider")
 	payload.Provider = providerType
 	if err != nil {
 		return fmt.Errorf("Issue slicing provider from SPC: %v, Error: %v", spcName, err)
 	}
+
 	usePodIdentity := parameters["usePodIdentity"]
 	err = podInfoToPayload(ctx, payload, item.Object, spcName, usePodIdentity)
 	if err != nil {
 		return fmt.Errorf("podInfoToPayload(): %v", err)
 	}
+
 	return nil
 }
 func fetchProviderBinary(payload *Payload) error {
-	// /etc/kubernetes/secrets-store-csi-providers/azure/provider-azure
-	///var/lib/kubelet/pods/a348c36c-c8e2-4a74-80bb-e2fea1108c79/volumes/kubernetes.io~csi/secrets-store-inline/mount
 	providerBinary := fmt.Sprintf("%s/%s/provider-%s", providerVolumePath, payload.Provider, payload.Provider)
 	spew.Dump(payload)
 	parametersStr, err := json.Marshal(&payload.Parameters)
@@ -120,12 +139,6 @@ func fetchProviderBinary(payload *Payload) error {
 		log.Errorf("failed to marshal secrets")
 		return err
 	}
-	// spew.Dump(string(secretStr))
-	// permissionStr, err := json.Marshal(&payload.Permissions)
-	// if err != nil {
-	// 	log.Errorf("failed to marshal file permission")
-	// 	return err
-	// }
 
 	args := []string{
 		"--attributes", string(parametersStr),
@@ -201,7 +214,6 @@ func podInfoToPayload(ctx context.Context, payload *Payload, obj map[string]inte
 		if err != nil {
 			return fmt.Errorf("Issue Fetching Pod from API, Error: %v", err)
 		}
-		spew.Dump(pod.Spec.Volumes[0])
 		podUID := pod.UID
 		var secretsName, mountName string
 		for _, vol := range pod.Spec.Volumes {
@@ -213,7 +225,6 @@ func podInfoToPayload(ctx context.Context, payload *Payload, obj map[string]inte
 				secretsName = vol.CSI.NodePublishSecretRef.Name
 			}
 			mountName = vol.Name
-			///var/lib/kubelet/pods/a348c36c-c8e2-4a74-80bb-e2fea1108c79/volumes/kubernetes.io~csi/secrets-store-inline/mount
 		}
 		payload.TargetPath = fmt.Sprintf("/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/%s/mount", podUID, mountName)
 
