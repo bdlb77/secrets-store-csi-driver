@@ -10,7 +10,7 @@ import (
 func main() {
 	var ctx context.Context
 	// interval every X (time.Second)
-	pollInterval := 10
+	pollInterval := 60
 
 	timerCh := time.Tick(time.Duration(pollInterval) * time.Second)
 
