@@ -27,8 +27,8 @@ type Parameters struct {
 	UserAssignedIdentityID string `json:"userAssignedIdentityId" yaml:"userAssignedIdentityId"`
 }
 type Payload struct {
-	Provider     string     `json:"provider" yaml:"provider"`
-	MountPath    string     `json:"mountPath" yaml:"mountPath"`
+	Provider     string `json:"provider" yaml:"provider"`
+	TargetPath   string
 	Parameters   Parameters `json:"parameters" yaml:"parameters"`
 	Permissions  int        `json:"permissions" yaml:"permissions"`
 	Secrets      Secrets
@@ -69,7 +69,6 @@ func main() {
 		if err != nil {
 			log.Errorf("Error when Calling Provider. Error: %v", err)
 		}
-
 	}
 }
 func buildPayloadFromSPC(ctx context.Context, item unstructured.Unstructured, payload *Payload) error {
@@ -99,17 +98,18 @@ func buildPayloadFromSPC(ctx context.Context, item unstructured.Unstructured, pa
 	if err != nil {
 		return fmt.Errorf("Issue slicing provider from SPC: %v, Error: %v", spcName, err)
 	}
-	err = podInfoToPayload(ctx, payload, item.Object, spcName, parameters["usePodIdentity"])
+	usePodIdentity := parameters["usePodIdentity"]
+	err = podInfoToPayload(ctx, payload, item.Object, spcName, usePodIdentity)
 	if err != nil {
 		return fmt.Errorf("podInfoToPayload(): %v", err)
 	}
 	return nil
 }
 func fetchProviderBinary(payload *Payload) error {
-	providerVolumePath := "/etc/kubernetes/secrets-store-csi-providers"
 	// /etc/kubernetes/secrets-store-csi-providers/azure/provider-azure
+	///var/lib/kubelet/pods/a348c36c-c8e2-4a74-80bb-e2fea1108c79/volumes/kubernetes.io~csi/secrets-store-inline/mount
 	providerBinary := fmt.Sprintf("%s/%s/provider-%s", providerVolumePath, payload.Provider, payload.Provider)
-
+	spew.Dump(payload)
 	parametersStr, err := json.Marshal(&payload.Parameters)
 	if err != nil {
 		log.Errorf("failed to marshal parameters")
@@ -120,17 +120,18 @@ func fetchProviderBinary(payload *Payload) error {
 		log.Errorf("failed to marshal secrets")
 		return err
 	}
-	permissionStr, err := json.Marshal(&payload.Permissions)
-	if err != nil {
-		log.Errorf("failed to marshal file permission")
-		return err
-	}
+	// spew.Dump(string(secretStr))
+	// permissionStr, err := json.Marshal(&payload.Permissions)
+	// if err != nil {
+	// 	log.Errorf("failed to marshal file permission")
+	// 	return err
+	// }
 
 	args := []string{
 		"--attributes", string(parametersStr),
 		"--secrets", string(secretStr),
-		"--targetPath", string(payload.MountPath),
-		"--permission", string(permissionStr),
+		"--targetPath", string(payload.TargetPath),
+		"--permission", "420",
 	}
 	log.Infof("provider command invoked: %s %s %v", providerBinary,
 		"--attributes [REDACTED] --secrets [REDACTED]", args[4:])
@@ -138,7 +139,6 @@ func fetchProviderBinary(payload *Payload) error {
 		providerBinary,
 		args...,
 	)
-	spew.Dump(args)
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	cmd.Stderr, cmd.Stdout = stderr, stdout
@@ -187,6 +187,7 @@ func podInfoToPayload(ctx context.Context, payload *Payload, obj map[string]inte
 	for _, p := range statusPods {
 		podMap, _ := p.(map[string]interface{})
 		name, namespace := podMap["name"].(string), podMap["namespace"].(string)
+
 		podKey := types.NamespacedName{
 			Namespace: namespace,
 			Name:      name,
@@ -197,27 +198,25 @@ func podInfoToPayload(ctx context.Context, payload *Payload, obj map[string]inte
 			return fmt.Errorf("issue with creating client, Error: %v", err)
 		}
 		err = client.Get(ctx, podKey, pod)
-
+		if err != nil {
+			return fmt.Errorf("Issue Fetching Pod from API, Error: %v", err)
+		}
+		spew.Dump(pod.Spec.Volumes[0])
+		podUID := pod.UID
 		var secretsName, mountName string
 		for _, vol := range pod.Spec.Volumes {
 			if vol.CSI == nil {
 				continue
 			}
-			secretsName = vol.CSI.NodePublishSecretRef.Name
-			mountName = vol.Name
-		}
-
-		// TODO: Think to refactor
-		for _, c := range pod.Spec.Containers {
-			for _, volM := range c.VolumeMounts {
-				if mountName == volM.Name {
-					payload.MountPath = volM.MountPath
-					if volM.ReadOnly {
-						payload.Permissions = 0644
-					}
-				}
+			// TODO: check type of driver
+			if usePodIdentity == "false" {
+				secretsName = vol.CSI.NodePublishSecretRef.Name
 			}
+			mountName = vol.Name
+			///var/lib/kubelet/pods/a348c36c-c8e2-4a74-80bb-e2fea1108c79/volumes/kubernetes.io~csi/secrets-store-inline/mount
 		}
+		payload.TargetPath = fmt.Sprintf("/var/lib/kubelet/pods/%s/volumes/kubernetes.io~csi/%s/mount", podUID, mountName)
+
 		log.Infof("Adding K8s Secrets to Payload for SPC: %v", spcName)
 		if usePodIdentity == "false" {
 			err = addK8sSecretsToPayload(ctx, secretsName, namespace, payload)
