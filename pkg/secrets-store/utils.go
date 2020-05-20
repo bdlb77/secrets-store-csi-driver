@@ -46,7 +46,8 @@ import (
 )
 
 var (
-	secretProviderClassGvk = schema.GroupVersionKind{
+	// SecretProviderClassGvk used in Reconciler
+	SecretProviderClassGvk = schema.GroupVersionKind{
 		Group:   "secrets-store.csi.x-k8s.io",
 		Version: "v1alpha1",
 		Kind:    "SecretProviderClassList",
