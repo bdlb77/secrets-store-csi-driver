@@ -54,9 +54,18 @@ type ByPodStatus struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
+// RunningObject defines the desired state of a Secret Object projected in the Cluster.
+type RunningObject struct {
+	ObjectName    string `json:"objectName" yaml:"objectName"`
+	ObjectAlias   string `json:"objectAlias,omitempty" yaml:"objectAlias,omitempty"`
+	ObectType     string `json:"objectType" yaml:"objectType"`
+	ObjectVersion string `json:"objectVersion" yaml:"objectVersion"`
+}
+
 // SecretProviderClassStatus defines the observed state of SecretProviderClass
 type SecretProviderClassStatus struct {
-	ByPod []*ByPodStatus `json:"byPod,omitempty"`
+	Objects []*RunningObject `json:"objects,omitempty"`
+	ByPod   []*ByPodStatus   `json:"byPod,omitempty"`
 }
 
 // +kubebuilder:object:root=true

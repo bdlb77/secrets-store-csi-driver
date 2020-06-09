@@ -28,6 +28,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"gopkg.in/yaml.v2"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,6 +40,11 @@ import (
 
 	"sigs.k8s.io/secrets-store-csi-driver/apis/v1alpha1"
 )
+
+// StringArray ...
+type StringArray struct {
+	Array []string `json:"array" yaml:"array"`
+}
 
 var (
 	secretProviderClassGvk = schema.GroupVersionKind{
@@ -227,7 +233,6 @@ func createSecretProviderClassPodStatus(ctx context.Context, podname, namespace,
 		"mounted":                 mounted,
 		"secretProviderClassName": spcName,
 	}
-
 	if err := unstructured.SetNestedField(
 		obj.Object, status, "status"); err != nil {
 		return err
@@ -244,6 +249,38 @@ func createSecretProviderClassPodStatus(ctx context.Context, podname, namespace,
 	// create the secret provider class pod status
 	err = c.Create(ctx, obj, &client.CreateOptions{})
 	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	return nil
+}
+
+func setRunningObjectsInStatus(ctx context.Context, item *unstructured.Unstructured, parameters map[string]string) error {
+	var objectStr string
+	for k, v := range parameters {
+		if k == "objects" {
+			objectStr = v
+			break
+		}
+	}
+	var objectsA StringArray
+	err := yaml.Unmarshal([]byte(objectStr), &objectsA)
+	if err != nil {
+		log.Infof("unmarshal failed for objects")
+		return err
+	}
+	log.Debugf("objects array: %v", objectsA.Array)
+	var objects []v1alpha1.RunningObject
+	for i, o := range objectsA.Array {
+		var RunningObject v1alpha1.RunningObject
+		err = yaml.Unmarshal([]byte(o), &RunningObject)
+		if err != nil {
+			log.Infof("unmarshal failed for Running Objects at index %d", i)
+			return err
+		}
+		objects = append(objects, RunningObject)
+	}
+	log.Infof("unmarshaled Running Objects: %v", objects)
+	if err := unstructured.SetNestedField(item.Object, objects, "status"); err != nil {
 		return err
 	}
 	return nil
