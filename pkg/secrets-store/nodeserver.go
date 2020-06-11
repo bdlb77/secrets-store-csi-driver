@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/utils/mount"
 )
 
@@ -234,8 +235,16 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, fmt.Errorf("error mounting secret %v for pod: %s, ns: %s", stderr.String(), podUID, podNamespace)
 	}
 	// append secret objects to status field in SPC
-	if err = setRunningObjectsInStatus(ctx, item, parameters); err != nil {
-		return nil, fmt.Errorf("failed to append running objects in cluster to status of Secret ProviderClass, err: %v", err)
+	runningObjects, objectsExists, err := unstructured.NestedSlice(item.Object, "status", "objects")
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get slice of objects from status in SPC: %v, err: %v", item.GetName(), err)
+	}
+	// if objects aren't being tracked in status
+	if !objectsExists {
+		err = initializeObjectsInStatus(ctx, item, parameters, runningObjects)
+		if err != nil {
+			return nil, fmt.Errorf("failed to append running objects in cluster to status of Secret ProviderClass, err: %v", err)
+		}
 	}
 
 	// create the secret provider class pod status object

@@ -22,6 +22,12 @@ E2E_IMAGE_VERSION = v0.1.0-e2e-$(GIT_COMMIT)
 ifdef CI
 override IMAGE_VERSION := $(E2E_IMAGE_VERSION)
 endif
+
+IS_R=true
+ifdef IS_R
+override REGISTRY := docker.io/bdlb77
+endif
+
 IMAGE_TAG=$(REGISTRY)/$(IMAGE_NAME):$(IMAGE_VERSION)
 IMAGE_TAG_LATEST=$(REGISTRY)/$(IMAGE_NAME):latest
 LDFLAGS?='-X sigs.k8s.io/secrets-store-csi-driver/pkg/secrets-store.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"'
@@ -132,8 +138,7 @@ else
 		helm install csi-secrets-store charts/secrets-store-csi-driver --namespace default --wait --timeout=15m -v=5 --debug \
 			--set linux.image.pullPolicy="IfNotPresent" \
 			--set linux.image.repository="e2e/secrets-store-csi" \
-			--set linux.image.tag=$(IMAGE_VERSION) \
-			--set linux.image.pullPolicy="IfNotPresent"
+			--set linux.image.tag=$(IMAGE_VERSION)
 endif
 
 .PHONY: e2e-azure

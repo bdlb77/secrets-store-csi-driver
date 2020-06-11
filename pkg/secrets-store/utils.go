@@ -254,7 +254,7 @@ func createSecretProviderClassPodStatus(ctx context.Context, podname, namespace,
 	return nil
 }
 
-func setRunningObjectsInStatus(ctx context.Context, item *unstructured.Unstructured, parameters map[string]string) error {
+func initializeObjectsInStatus(ctx context.Context, item *unstructured.Unstructured, parameters map[string]string, runningObjects []interface{}) error {
 	var objectStr string
 	for k, v := range parameters {
 		if k == "objects" {
@@ -269,19 +269,25 @@ func setRunningObjectsInStatus(ctx context.Context, item *unstructured.Unstructu
 		return err
 	}
 	log.Debugf("objects array: %v", objectsA.Array)
-	var objects []v1alpha1.RunningObject
+
 	for i, o := range objectsA.Array {
-		var RunningObject v1alpha1.RunningObject
-		err = yaml.Unmarshal([]byte(o), &RunningObject)
+		var runningObject map[string]interface{}
+		err = yaml.Unmarshal([]byte(o), &runningObject)
 		if err != nil {
 			log.Infof("unmarshal failed for Running Objects at index %d", i)
 			return err
 		}
-		objects = append(objects, RunningObject)
+		spew.Dump(runningObject)
+		runningObjects = append(runningObjects, runningObject)
 	}
-	log.Infof("unmarshaled Running Objects: %v", objects)
-	if err := unstructured.SetNestedField(item.Object, objects, "status"); err != nil {
+	spew.Dump(item.Object)
+	log.Infof("unmarshaled Running Objects: %v", runningObjects)
+	if err := unstructured.SetNestedSlice(item.Object, runningObjects, "status", "objects"); err != nil {
+		log.Infof("Set Nested field failed for Status and Running Objects.")
 		return err
 	}
+
+	client, err := getClient()
+	client.Update(ctx, item)
 	return nil
 }
