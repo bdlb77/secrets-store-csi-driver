@@ -33,6 +33,11 @@ IMAGE_TAG_LATEST=$(REGISTRY)/$(IMAGE_NAME):latest
 LDFLAGS?='-X sigs.k8s.io/secrets-store-csi-driver/pkg/secrets-store.vendorVersion=$(IMAGE_VERSION) -extldflags "-static"'
 GO_FILES=$(shell go list ./... | grep -v /test/sanity)
 
+RECONCILER_IMAGE_NAME=secrets-store-reconciler
+RECONCILER_IMAGE_VERSION?=v0.0.1
+RECONCILER_TAG=$(REGISTRY)/$(RECONCILER_IMAGE_NAME):$(RECONCILER_IMAGE_VERSION)
+LDFLAGS_R ?= '-X sigs.k8s.io/secrests-store-sci-driver/pkg/reconciler.vendorVersion=$(RECONCILER_IMAGE_VERSION) -extldflags "-static"'
+
 .PHONY: all build image clean test-style
 
 GO111MODULE ?= on
@@ -56,10 +61,14 @@ build: setup
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS} -o _output/secrets-store-csi ./cmd/secrets-store-csi-driver
 build-windows: setup
 	CGO_ENABLED=0 GOOS=windows go build -a -ldflags ${LDFLAGS} -o _output/secrets-store-csi.exe ./cmd/secrets-store-csi-driver
+build-reconciler: setup
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags ${LDFLAGS_R} -o _output/rotation-reconciler ./cmd/rotation-reconciler
 image:
 	docker buildx build --no-cache --build-arg LDFLAGS=${LDFLAGS} -t $(IMAGE_TAG) -f docker/Dockerfile --platform="linux/amd64" --output "type=docker,push=false" .
 image-windows:
 	docker buildx build --no-cache --build-arg LDFLAGS=${LDFLAGS} -t $(IMAGE_TAG) -f docker/windows.Dockerfile --platform="windows/amd64" --output "type=docker,push=false" .
+image-reconciler: build-reconciler
+	docker build --no-cache -t $(RECONCILER_TAG) -f docker/reconciler.Dockerfile .
 clean:
 	-rm -rf _output
 setup: clean
