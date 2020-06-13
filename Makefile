@@ -82,7 +82,7 @@ VAULT_VERSION ?= 1.2.2
 .PHONY: e2e-test
 e2e-test: e2e-bootstrap
 	make e2e-azure
-	
+
 .PHONY: e2e-bootstrap
 e2e-bootstrap: install-helm
 	apt-get update && apt-get install bats && apt-get install gettext-base -y

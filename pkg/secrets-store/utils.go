@@ -144,8 +144,8 @@ func (ns *nodeServer) ensureMountPoint(target string) (bool, error) {
 	return false, nil
 }
 
-// getClient returns client.Client
-func getClient() (client.Client, error) {
+// GetClient returns client.Client
+func GetClient() (client.Client, error) {
 	cfg, err := config.GetConfig()
 	if err != nil {
 		return nil, err
@@ -162,7 +162,7 @@ func getSecretProviderItem(ctx context.Context, name, namespace string) (*unstru
 	instanceList := &unstructured.UnstructuredList{}
 	instanceList.SetGroupVersionKind(secretProviderClassGvk)
 	// recreating client here to prevent reading from cache
-	c, err := getClient()
+	c, err := GetClient()
 	if err != nil {
 		return nil, err
 	}
@@ -193,6 +193,20 @@ func getStringFromObjectSpec(object map[string]interface{}, key string) (string,
 	return value, nil
 }
 
+// GetStringFromObjectStatus used in Reconciler
+func GetStringFromObjectStatus(object map[string]interface{}, key string) (string, error) {
+	value, exists, err := unstructured.NestedString(object, "status", key)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return "", fmt.Errorf("could not get field %s from status", key)
+	}
+	if len(value) == 0 {
+		return "", fmt.Errorf("field %s is not set", key)
+	}
+	return value, nil
+}
 func getMapFromObjectSpec(object map[string]interface{}, key string) (map[string]string, error) {
 	value, exists, err := unstructured.NestedStringMap(object, "spec", key)
 	if err != nil {
@@ -242,7 +256,7 @@ func createSecretProviderClassPodStatus(ctx context.Context, podname, namespace,
 		"internal.secrets-store.csi.k8s.io/node-name": nodeID,
 	})
 	// recreating client here to prevent reading from cache
-	c, err := getClient()
+	c, err := GetClient()
 	if err != nil {
 		return err
 	}
@@ -252,6 +266,27 @@ func createSecretProviderClassPodStatus(ctx context.Context, podname, namespace,
 		return err
 	}
 	return nil
+}
+func GetK8sSecret(ctx context.Context, name string, namespace string) (*corev1.Secret, error) {
+	client, err := GetClient()
+
+	if err != nil {
+		return nil, err
+	}
+	secretKey := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+		},
+	}
+
+	err = client.Get(ctx, secretKey, secret)
+
+	return secret, nil
 }
 
 func initializeObjectsInStatus(ctx context.Context, item *unstructured.Unstructured, parameters map[string]string, runningObjects []interface{}) error {
@@ -277,17 +312,17 @@ func initializeObjectsInStatus(ctx context.Context, item *unstructured.Unstructu
 			log.Infof("unmarshal failed for Running Objects at index %d", i)
 			return err
 		}
-		spew.Dump(runningObject)
+		delete(runningObject, "objectType")
+		delete(runningObject, "objectAlias")
 		runningObjects = append(runningObjects, runningObject)
 	}
-	spew.Dump(item.Object)
 	log.Infof("unmarshaled Running Objects: %v", runningObjects)
 	if err := unstructured.SetNestedSlice(item.Object, runningObjects, "status", "objects"); err != nil {
 		log.Infof("Set Nested field failed for Status and Running Objects.")
 		return err
 	}
 
-	client, err := getClient()
+	client, err := GetClient()
 	client.Update(ctx, item)
 	return nil
 }
