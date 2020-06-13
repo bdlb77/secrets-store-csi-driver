@@ -17,12 +17,16 @@ limitations under the License.
 package secretsstore
 
 import (
+	corev1 "k8s.io/api/core/v1"
+
 	"fmt"
 	"io/ioutil"
 	"os"
 	"regexp"
 	"runtime"
 	"strings"
+
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
