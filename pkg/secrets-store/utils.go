@@ -26,8 +26,6 @@ import (
 	"runtime"
 	"strings"
 
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
@@ -161,8 +159,8 @@ func GetClient() (client.Client, error) {
 	return c, nil
 }
 
-// getSecretProviderItem returns the secretproviderclass object by name and namespace
-func getSecretProviderItem(ctx context.Context, name, namespace string) (*unstructured.Unstructured, error) {
+// GetSecretProviderItem returns the secretproviderclass object by name and namespace
+func GetSecretProviderItem(ctx context.Context, name, namespace string) (*unstructured.Unstructured, error) {
 	instanceList := &unstructured.UnstructuredList{}
 	instanceList.SetGroupVersionKind(secretProviderClassGvk)
 	// recreating client here to prevent reading from cache
@@ -183,7 +181,7 @@ func getSecretProviderItem(ctx context.Context, name, namespace string) (*unstru
 	return nil, fmt.Errorf("could not find secretproviderclass %s", name)
 }
 
-func getStringFromObjectSpec(object map[string]interface{}, key string) (string, error) {
+func GetStringFromObjectSpec(object map[string]interface{}, key string) (string, error) {
 	value, exists, err := unstructured.NestedString(object, "spec", key)
 	if err != nil {
 		return "", err
@@ -211,7 +209,7 @@ func GetStringFromObjectStatus(object map[string]interface{}, key string) (strin
 	}
 	return value, nil
 }
-func getMapFromObjectSpec(object map[string]interface{}, key string) (map[string]string, error) {
+func GetMapFromObjectSpec(object map[string]interface{}, key string) (map[string]string, error) {
 	value, exists, err := unstructured.NestedStringMap(object, "spec", key)
 	if err != nil {
 		return nil, err
@@ -271,6 +269,8 @@ func createSecretProviderClassPodStatus(ctx context.Context, podname, namespace,
 	}
 	return nil
 }
+
+// GetK8sSecret used in Reconciler Package
 func GetK8sSecret(ctx context.Context, name string, namespace string) (*corev1.Secret, error) {
 	client, err := GetClient()
 

@@ -123,17 +123,17 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, fmt.Errorf("secretProviderClass is not set")
 	}
 
-	item, err := getSecretProviderItem(ctx, secretProviderClass, podNamespace)
+	item, err := GetSecretProviderItem(ctx, secretProviderClass, podNamespace)
 	if err != nil {
 		errorReason = SecretProviderClassNotFound
 		return nil, err
 	}
-	provider, err := getStringFromObjectSpec(item.Object, providerField)
+	provider, err := GetStringFromObjectSpec(item.Object, providerField)
 	if err != nil {
 		return nil, err
 	}
 	providerName = provider
-	parameters, err = getMapFromObjectSpec(item.Object, parametersField)
+	parameters, err = GetMapFromObjectSpec(item.Object, parametersField)
 	if err != nil {
 		return nil, err
 	}

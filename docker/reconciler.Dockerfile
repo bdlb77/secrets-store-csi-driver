@@ -6,4 +6,4 @@ RUN apt-get update \
 
 LABEL description="Secrets Store Reconciler"
 
-COPY ./_output/secrets-store-reconciler /secrets-store-reconciler
+COPY ./_output/rotation-reconciler /rotation-reconciler

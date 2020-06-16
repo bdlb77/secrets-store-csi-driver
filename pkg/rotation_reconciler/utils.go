@@ -1,14 +1,18 @@
 package rotation_reconciler
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"os/exec"
 
+	"github.com/prometheus/common/log"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	v1alpha1 "sigs.k8s.io/secrets-store-csi-driver/apis/v1alpha1"
 	secretsstore "sigs.k8s.io/secrets-store-csi-driver/pkg/secrets-store"
 )
 
@@ -30,41 +34,87 @@ func getPod(ctx context.Context, namespace, name string, obj *corev1.Pod) error 
 	return nil
 }
 
-func getSPC(ctx context.Context, namespace, name string, obj *v1alpha1.SecretProviderClass) error {
+func getSPC(ctx context.Context, namespace, name string) (*unstructured.Unstructured, error) {
+	spc := &unstructured.Unstructured{}
+	SecretProviderClassGvk := schema.GroupVersionKind{
+		Group:   "secrets-store.csi.x-k8s.io",
+		Version: "v1alpha1",
+		Kind:    "SecretProviderClass",
+	}
+	spc.SetGroupVersionKind(SecretProviderClassGvk)
 
 	client, err := secretsstore.GetClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	objectKey := types.NamespacedName{
 		Namespace: namespace,
 		Name:      name,
 	}
 
-	err = client.Get(ctx, objectKey, obj)
+	err = client.Get(ctx, objectKey, spc)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return spc, nil
 }
 func getSecretProviderClassPodStatuses(ctx context.Context) (*unstructured.UnstructuredList, error) {
-	bindingList := &unstructured.UnstructuredList{}
-	bindingList.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   v1alpha1.GroupVersion.Group,
-		Version: v1alpha1.GroupVersion.Version,
-		Kind:    "SecretProviderClassPodStatusList",
-	})
-
 	// recreating client here to prevent reading from cache
 	c, err := secretsstore.GetClient()
 	if err != nil {
 		return nil, err
 	}
+
+	bindingList := &unstructured.UnstructuredList{}
+	SecretProviderClassGvk := schema.GroupVersionKind{
+		Group:   "secrets-store.csi.x-k8s.io",
+		Version: "v1alpha1",
+		Kind:    "SecretProviderClassPodStatusList",
+	}
+	bindingList.SetGroupVersionKind(SecretProviderClassGvk)
+
 	err = c.List(ctx, bindingList)
 	if err != nil {
 		return nil, err
 	}
 
 	return bindingList, nil
+}
+func fetchProviderBinary(payload Payload) error {
+	providerBinary := fmt.Sprintf("%s/%s/provider-%s", providerVolumePath, payload.Provider, payload.Provider)
+	parametersStr, err := json.Marshal(payload.Parameters)
+	if err != nil {
+		log.Errorf("failed to marshal parameters")
+		return err
+	}
+	secretStr, err := json.Marshal(payload.Secrets)
+	if err != nil {
+		log.Errorf("failed to marshal secrets")
+		return err
+	}
+
+	args := []string{
+		"--attributes", string(parametersStr),
+		"--secrets", string(secretStr),
+		"--targetPath", string(payload.TargetPath),
+		"--permission", "420",
+	}
+	log.Infof("provider command invoked: %s %s %v", providerBinary,
+		"--attributes [REDACTED] --secrets [REDACTED]", args[4:])
+	cmd := exec.Command(
+		providerBinary,
+		args...,
+	)
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	cmd.Stderr, cmd.Stdout = stderr, stdout
+
+	err = cmd.Run()
+
+	if err != nil {
+		log.Errorf("err: %v, output: %v", err, stderr.String())
+		// log.Errorf("error invoking provider, err: %v, output: %v", err, stderr.String())
+	}
+	return nil
 }

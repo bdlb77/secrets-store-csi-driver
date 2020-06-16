@@ -6,6 +6,11 @@ linux:
     tag: v0.0.11
     pullPolicy: Always
   kubeletRootDir: /var/lib/kubelet
+  reconciler:
+    image:
+      pullPolicy: Always
+      repository: docker.io/bdlb77/secrets-store-reconciler
+      tag: v0.0.1
 
 windows:
   enabled: false
