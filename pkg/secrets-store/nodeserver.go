@@ -234,22 +234,22 @@ func (ns *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		log.Errorf("error invoking provider, err: %v, output: %v for pod: %s, ns: %s", err, stderr.String(), podUID, podNamespace)
 		return nil, fmt.Errorf("error mounting secret %v for pod: %s, ns: %s", stderr.String(), podUID, podNamespace)
 	}
-	// append secret objects to status field in SPC
-	runningObjects, objectsExists, err := unstructured.NestedSlice(item.Object, "status", "objects")
+	// create the secret provider class pod status object
+	spcPodStatus, err := createSecretProviderClassPodStatus(ctx, podName, podNamespace, podUID, secretProviderClass, targetPath, ns.nodeID, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create secret provider class pod status, err: %v", err)
+	}
+	// append secret objects to status field in SPCPodStatus
+	runningObjects, objectsExists, err := unstructured.NestedSlice(spcPodStatus.Object, "status", "objects")
 	if err != nil {
 		return nil, fmt.Errorf("Failed to get slice of objects from status in SPC: %v, err: %v", item.GetName(), err)
 	}
 	// if objects aren't being tracked in status
 	if !objectsExists {
-		err = initializeObjectsInStatus(ctx, item, parameters, runningObjects)
+		err = initializeObjectsInStatus(ctx, spcPodStatus, parameters, runningObjects)
 		if err != nil {
 			return nil, fmt.Errorf("failed to append running objects in cluster to status of Secret ProviderClass, err: %v", err)
 		}
-	}
-
-	// create the secret provider class pod status object
-	if err = createSecretProviderClassPodStatus(ctx, podName, podNamespace, podUID, secretProviderClass, targetPath, ns.nodeID, true); err != nil {
-		return nil, fmt.Errorf("failed to create secret provider class pod status, err: %v", err)
 	}
 
 	return &csi.NodePublishVolumeResponse{}, nil

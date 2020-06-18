@@ -223,7 +223,7 @@ func GetMapFromObjectSpec(object map[string]interface{}, key string) (map[string
 	return value, nil
 }
 
-func createSecretProviderClassPodStatus(ctx context.Context, podname, namespace, podUID, spcName, targetPath, nodeID string, mounted bool) error {
+func createSecretProviderClassPodStatus(ctx context.Context, podname, namespace, podUID, spcName, targetPath, nodeID string, mounted bool) (*unstructured.Unstructured, error) {
 	obj := &unstructured.Unstructured{}
 	obj.SetName(podname + "-" + namespace + "-" + spcName)
 	obj.SetNamespace(namespace)
@@ -251,7 +251,7 @@ func createSecretProviderClassPodStatus(ctx context.Context, podname, namespace,
 	}
 	if err := unstructured.SetNestedField(
 		obj.Object, status, "status"); err != nil {
-		return err
+		return nil, err
 	}
 
 	obj.SetLabels(map[string]string{
@@ -260,14 +260,14 @@ func createSecretProviderClassPodStatus(ctx context.Context, podname, namespace,
 	// recreating client here to prevent reading from cache
 	c, err := GetClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// create the secret provider class pod status
 	err = c.Create(ctx, obj, &client.CreateOptions{})
 	if err != nil && !apierrors.IsAlreadyExists(err) {
-		return err
+		return nil, err
 	}
-	return nil
+	return obj, nil
 }
 
 // GetK8sSecret used in Reconciler Package

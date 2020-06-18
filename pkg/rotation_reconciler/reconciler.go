@@ -88,7 +88,7 @@ func Reconciler(ctx context.Context) {
 		}
 
 		// add currentObjects to payload
-		err = buildRunningObjectsInPayload(spc, &payload)
+		err = buildRunningObjectsInPayload(&spcBinding, &payload)
 		if err != nil {
 			log.Errorf("Failed to Set Current Objects into Payload, Err: %v", err)
 			continue
@@ -184,13 +184,13 @@ func setProviderTypeInPayload(obj map[string]interface{}, payload *Payload) erro
 	payload.Provider = provider
 	return nil
 }
-func buildRunningObjectsInPayload(spc *unstructured.Unstructured, payload *Payload) error {
-	runningObjects, exists, err := unstructured.NestedSlice(spc.Object, "status", "objects")
+func buildRunningObjectsInPayload(spcPodStatus *unstructured.Unstructured, payload *Payload) error {
+	runningObjects, exists, err := unstructured.NestedSlice(spcPodStatus.Object, "status", "objects")
 	if err != nil {
-		return fmt.Errorf("Failed to get slice of runningObjects in SPC: %s, Err: %v", spc.GetName(), err)
+		return fmt.Errorf("Failed to get slice of runningObjects in SPC: %s, Err: %v", spcPodStatus.GetName(), err)
 	}
 	if !exists {
-		return fmt.Errorf("No running Objects in Cluster for SPC: %s", spc.GetName())
+		return fmt.Errorf("No running Objects in Cluster for spcPodStatus: %s", spcPodStatus.GetName())
 	}
 	objs := make([]map[string]interface{}, 0)
 	for _, obj := range runningObjects {
