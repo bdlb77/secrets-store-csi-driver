@@ -79,13 +79,6 @@ func Reconciler(ctx context.Context) {
 		payload.TargetPath, err = secretsstore.GetStringFromObjectStatus(spcBinding.Object, "targetPath")
 		podName, err := secretsstore.GetStringFromObjectStatus(spcBinding.Object, "podName")
 		spcName, err := secretsstore.GetStringFromObjectStatus(spcBinding.Object, "secretProviderClassName")
-		// fetch SecretProviderClass from K8s
-		// spc := &v1alpha1.SecretProviderClass{}
-
-		spc, err := getSPC(context.TODO(), namespace, spcName)
-		if err != nil {
-			log.Errorf("failed to get spc %s, err: %+v", spcName, err)
-		}
 
 		// add currentObjects to payload
 		err = buildRunningObjectsInPayload(&spcBinding, &payload)
@@ -93,13 +86,13 @@ func Reconciler(ctx context.Context) {
 			log.Errorf("Failed to Set Current Objects into Payload, Err: %v", err)
 			continue
 		}
-		// fetch Pod from K8s API
-		var pod corev1.Pod
-		err = getPod(context.TODO(), namespace, podName, &pod)
+
+		// fetch SPC from K8s API
+		spc, err := getSPC(context.TODO(), namespace, spcName)
 		if err != nil {
-			log.Errorf("Failed to get pod: %s, err: %v", podName, err)
-			continue
+			log.Errorf("failed to get spc %s, err: %+v", spcName, err)
 		}
+
 		// set provider to payload
 		err = setProviderTypeInPayload(spc.Object, &payload)
 		if err != nil {
@@ -123,6 +116,13 @@ func Reconciler(ctx context.Context) {
 			log.Errorf("Issue Unmarshaling params from instance of SPC: %v, Error: %v ", spcName, err)
 		}
 
+		// fetch Pod from K8s API
+		var pod corev1.Pod
+		err = getPod(context.TODO(), namespace, podName, &pod)
+		if err != nil {
+			log.Errorf("Failed to get pod: %s, err: %v", podName, err)
+			continue
+		}
 		// receive SecretRefName for K8s Secret.
 		usePodIdentity := payload.Parameters.UsePodIdentity
 		var secretRefName string
@@ -145,9 +145,12 @@ func Reconciler(ctx context.Context) {
 			log.Errorf("Failed to Call Provider Binary. Err: %v", err)
 			return
 		}
+
 		log.Infof("Finished Calling Binary.")
 
 		log.Infof("Beginning Update of Object Versions.")
+		// path := "/home/bdlb77/go/src/sigs.k8s.io/secrets-store-csi-driver"
+		// currentObjects, err := readMetadataFiles(path)
 		currentObjects, err := readMetadataFiles(payload.TargetPath)
 		if err != nil {
 			log.Errorf("Failed to Read Metadata files to receive new Object Versions, Err: %v", err)
@@ -157,7 +160,8 @@ func Reconciler(ctx context.Context) {
 			log.Infof("no object versions to update.")
 			continue
 		}
-		if err := unstructured.SetNestedSlice(spc.Object, currentObjects, "status", "objects"); err != nil {
+
+		if err := unstructured.SetNestedSlice(spcBinding.Object, currentObjects, "status", "objects"); err != nil {
 			log.Errorf("Failed to append object versions to SPC: %s, Err: %v", spc.GetName(), err)
 			continue
 		}
@@ -168,9 +172,9 @@ func Reconciler(ctx context.Context) {
 			continue
 		}
 
-		log.Infof("Updating Object Versions in Status for SPC: %s", spc.GetName())
-		client.Update(context.TODO(), spc)
-		log.Infof("Finished Updating Object Versions for SPC: %s", spc.GetName())
+		log.Infof("Updating Object Versions in Status for SPCPodStatus: %s", spcBinding.GetName())
+		client.Update(context.TODO(), &spcBinding)
+		log.Infof("Finished Updating Object Versions for SPCPodStatus: %s", spcBinding.GetName())
 	}
 
 	log.Infof("Finishing Reconciler.")

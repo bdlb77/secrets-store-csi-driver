@@ -135,9 +135,11 @@ func readMetadataFiles(targetPath string) ([]interface{}, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read file %s, err: %v", file.Name(), err)
 		}
+		// format string to take in correct value from file
+		str := string(content[:len(content)-1])
 		obj := map[string]interface{}{
 			"objectName":    file.Name(),
-			"objectVersion": string(content),
+			"objectVersion": str,
 		}
 		newObjects = append(newObjects, obj)
 	}

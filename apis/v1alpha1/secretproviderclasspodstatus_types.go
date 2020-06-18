@@ -22,11 +22,18 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // SecretProviderClassPodStatusStatus defines the observed state of SecretProviderClassPodStatus
 type SecretProviderClassPodStatusStatus struct {
-	PodName                 string `json:"podName,omitempty"`
-	PodUID                  string `json:"podUID,omitempty"`
-	SecretProviderClassName string `json:"secretProviderClassName,omitempty"`
-	Mounted                 bool   `json:"mounted,omitempty"`
-	TargetPath              string `json:"targetPath,omitempty"`
+	Objects                 []*CurrentObject `json:"objects,omitempty"`
+	PodName                 string           `json:"podName,omitempty"`
+	PodUID                  string           `json:"podUID,omitempty"`
+	SecretProviderClassName string           `json:"secretProviderClassName,omitempty"`
+	Mounted                 bool             `json:"mounted,omitempty"`
+	TargetPath              string           `json:"targetPath,omitempty"`
+}
+
+// CurrentObject defines the desired state of a Secret Object projected in the Cluster.
+type CurrentObject struct {
+	ObjectName    string `json:"objectName" yaml:"objectName"`
+	ObjectVersion string `json:"objectVersion" yaml:"objectVersion"`
 }
 
 // +kubebuilder:object:root=true

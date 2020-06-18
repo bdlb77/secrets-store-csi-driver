@@ -316,8 +316,6 @@ func initializeObjectsInStatus(ctx context.Context, item *unstructured.Unstructu
 			log.Infof("unmarshal failed for Running Objects at index %d", i)
 			return err
 		}
-		delete(runningObject, "objectType")
-		delete(runningObject, "objectAlias")
 		runningObjects = append(runningObjects, runningObject)
 	}
 	log.Infof("unmarshaled Running Objects: %v", runningObjects)
