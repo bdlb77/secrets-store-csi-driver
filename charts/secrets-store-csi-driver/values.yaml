@@ -10,7 +10,7 @@ linux:
     image:
       pullPolicy: Always
       repository: docker.io/bdlb77/secrets-store-reconciler
-      tag: v0.0.1
+      tag: v0.0.2
 
 windows:
   enabled: false

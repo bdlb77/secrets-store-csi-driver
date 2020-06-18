@@ -1,10 +1,11 @@
-package rotation_reconciler
+package rotationreconciler
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os/exec"
 
 	"github.com/prometheus/common/log"
@@ -117,4 +118,28 @@ func fetchProviderBinary(payload Payload) error {
 		// log.Errorf("error invoking provider, err: %v, output: %v", err, stderr.String())
 	}
 	return nil
+}
+
+func readMetadataFiles(targetPath string) ([]interface{}, error) {
+	path := targetPath + "/.metadata"
+	files, err := ioutil.ReadDir(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all files in target path %s, err: %v", path, err)
+	}
+	if len(files) < 1 {
+		return nil, fmt.Errorf("No Objects Written by The Provider at path: %s", path)
+	}
+	newObjects := make([]interface{}, 0)
+	for _, file := range files {
+		content, err := ioutil.ReadFile(path + "/" + file.Name())
+		if err != nil {
+			return nil, fmt.Errorf("failed to read file %s, err: %v", file.Name(), err)
+		}
+		obj := map[string]interface{}{
+			"objectName":    file.Name(),
+			"objectVersion": string(content),
+		}
+		newObjects = append(newObjects, obj)
+	}
+	return newObjects, nil
 }

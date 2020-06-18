@@ -1,7 +1,7 @@
 // create/update objectVersions with mounted file content
 // add versions info to secretProviderClass obj's versions status field
 
-package rotation_reconciler
+package rotationreconciler
 
 import (
 	"context"
@@ -101,19 +101,18 @@ func Reconciler(ctx context.Context) {
 			continue
 		}
 		// set provider to payload
-		provider, err := secretsstore.GetStringFromObjectSpec(spc.Object, "provider")
+		err = setProviderTypeInPayload(spc.Object, &payload)
 		if err != nil {
 			log.Errorf("Failed to get Provider Type From SPC: %s, Err: %v", spc.GetName(), err)
 			continue
 		}
-		payload.Provider = provider
 
 		params, err := secretsstore.GetMapFromObjectSpec(spc.Object, "parameters")
 		if err != nil {
 			log.Errorf("Failed to get Parameters from SPC: %s, Err: %v", spc.GetName(), err)
 			continue
 		}
-		// // add parameters to payload
+		// add parameters to payload
 		paramsJSON, err := json.Marshal(params)
 		if err != nil {
 			log.Errorf("Failed to convert paramteres from spc to JSON, err: %v", err)
@@ -147,14 +146,43 @@ func Reconciler(ctx context.Context) {
 			return
 		}
 		log.Infof("Finished Calling Binary.")
-		/*
-			1. get both ObjStr from config'd objects & running Objects.. Pass both to provider.
-				- Provider will send config'd objects to KeyVault, and use RunningObjects to compare versions.
 
+		log.Infof("Beginning Update of Object Versions.")
+		currentObjects, err := readMetadataFiles(payload.TargetPath)
+		if err != nil {
+			log.Errorf("Failed to Read Metadata files to receive new Object Versions, Err: %v", err)
+			continue
+		}
+		if len(currentObjects) < 1 {
+			log.Infof("no object versions to update.")
+			continue
+		}
+		if err := unstructured.SetNestedSlice(spc.Object, currentObjects, "status", "objects"); err != nil {
+			log.Errorf("Failed to append object versions to SPC: %s, Err: %v", spc.GetName(), err)
+			continue
+		}
 
-		*/
+		client, err := secretsstore.GetClient()
+		if err != nil {
+			log.Errorf("Failed to get Client")
+			continue
+		}
 
+		log.Infof("Updating Object Versions in Status for SPC: %s", spc.GetName())
+		client.Update(context.TODO(), spc)
+		log.Infof("Finished Updating Object Versions for SPC: %s", spc.GetName())
 	}
+
+	log.Infof("Finishing Reconciler.")
+}
+
+func setProviderTypeInPayload(obj map[string]interface{}, payload *Payload) error {
+	provider, err := secretsstore.GetStringFromObjectSpec(obj, "provider")
+	if err != nil {
+		return err
+	}
+	payload.Provider = provider
+	return nil
 }
 func buildRunningObjectsInPayload(spc *unstructured.Unstructured, payload *Payload) error {
 	runningObjects, exists, err := unstructured.NestedSlice(spc.Object, "status", "objects")

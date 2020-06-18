@@ -34,7 +34,7 @@ LDFLAGS?='-X sigs.k8s.io/secrets-store-csi-driver/pkg/secrets-store.vendorVersio
 GO_FILES=$(shell go list ./... | grep -v /test/sanity)
 
 RECONCILER_IMAGE_NAME=secrets-store-reconciler
-RECONCILER_IMAGE_VERSION?=v0.0.1
+RECONCILER_IMAGE_VERSION?=v0.0.2
 RECONCILER_TAG=$(REGISTRY)/$(RECONCILER_IMAGE_NAME):$(RECONCILER_IMAGE_VERSION)
 LDFLAGS_R ?= '-X sigs.k8s.io/secrests-store-sci-driver/pkg/reconciler.vendorVersion=$(RECONCILER_IMAGE_VERSION) -extldflags "-static"'
 
