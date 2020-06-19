@@ -57,6 +57,18 @@ func Reconciler(ctx context.Context) {
 				8. Make call to K8s secrets using name of K8s secret from NodePublishSecretRef
 				9. Append K8s secrets to Payload.Secrets
 			10. Fetch provider binary
+
+
+			- Race Conditions - Secret Pairing - If Updating, and 2nd half of secret updates again..
+				- All evaluated pods will have previous 1/2 of valid secrets
+				- Add guidance about how to deal with this (Valid old and new credential)
+				- Guidance: If secrets are paired, should be written together.
+				- Possible Fix? If burst of updates -> buffer incoming events & issue 1 event
+
+			- Buffer
+				- create window of opportunity for receiving related events.. Then emit 1 event at end of window
+				- Open up stream for incoming events, if tail has not been changed/updated for X time
+					emit event / notification for pod rotation (deployment or something)
 	*/
 
 	spcBindings, err := getSecretProviderClassPodStatuses(ctx)
