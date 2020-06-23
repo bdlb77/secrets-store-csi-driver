@@ -86,19 +86,22 @@ func fetchProviderBinary(payload Payload) error {
 	providerBinary := fmt.Sprintf("%s/%s/provider-%s", providerVolumePath, payload.Provider, payload.Provider)
 	parametersStr, err := json.Marshal(payload.Parameters)
 	if err != nil {
-		log.Errorf("failed to marshal parameters")
-		return err
+		return fmt.Errorf("failed to marshal parameters, Err: %v", err)
+	}
+	objectVersionStr, err := json.Marshal(payload.CurrentObjects)
+	if err != nil {
+		return fmt.Errorf("Failed to marshal list of current ObjectVersions present in cluster, Err: %v", err)
 	}
 	secretStr, err := json.Marshal(payload.Secrets)
 	if err != nil {
-		log.Errorf("failed to marshal secrets")
-		return err
+		return fmt.Errorf("failed to marshal secrets, Err: %v", err)
 	}
 
 	args := []string{
 		"--attributes", string(parametersStr),
 		"--secrets", string(secretStr),
 		"--targetPath", string(payload.TargetPath),
+		"--objectVersions", string(objectVersionStr),
 		"--permission", "420",
 	}
 	log.Infof("provider command invoked: %s %s %v", providerBinary,
