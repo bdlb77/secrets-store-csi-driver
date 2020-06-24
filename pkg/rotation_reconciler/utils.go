@@ -100,12 +100,12 @@ func fetchProviderBinary(payload Payload) error {
 	args := []string{
 		"--attributes", string(parametersStr),
 		"--secrets", string(secretStr),
-		"--targetPath", string(payload.TargetPath),
 		"--objectVersions", string(objectVersionStr),
+		"--targetPath", string(payload.TargetPath),
 		"--permission", "420",
 	}
 	log.Infof("provider command invoked: %s %s %v", providerBinary,
-		"--attributes [REDACTED] --secrets [REDACTED]", args[4:])
+		"--attributes [REDACTED] --secrets [REDACTED] --objectVersions [REDACTED]", args[6:])
 	cmd := exec.Command(
 		providerBinary,
 		args...,
@@ -115,6 +115,9 @@ func fetchProviderBinary(payload Payload) error {
 	cmd.Stderr, cmd.Stdout = stderr, stdout
 
 	err = cmd.Run()
+
+	// write Stdout from Binary.
+	log.Infof("PROVIDER BINARY: %v", stdout.String())
 
 	if err != nil {
 		log.Errorf("err: %v, output: %v", err, stderr.String())
@@ -139,7 +142,7 @@ func readMetadataFiles(targetPath string) ([]interface{}, error) {
 			return nil, fmt.Errorf("failed to read file %s, err: %v", file.Name(), err)
 		}
 		// format string to take in correct value from file
-		str := string(content[:len(content)-1])
+		str := string(content[:len(content)])
 		obj := map[string]interface{}{
 			"objectName":    file.Name(),
 			"objectVersion": str,
